@@ -1,0 +1,42 @@
+#!/bin/bash
+#SBATCH --account {{ account }}
+#SBATCH --partition {{ partition }}
+#SBATCH --time={{ walltime }}
+#SBATCH --ntasks-per-node={{ ntasks_per_node }}
+#SBATCH --mem={{ mem }}
+#SBATCH --output={{ output }}
+#SBATCH --error={{ error }}
+#SBATCH --job-name={{ job_name }}
+#SBATCH --array={{ array }}
+
+## Load relevant modules
+    module load ompi
+    
+## Access environment variables
+  source {{ env }}
+
+# Construct name of input file
+    input_dir="$(printenv INPUTS)"
+    task_id=$(printf "%05d" "${SLURM_ARRAY_TASK_ID}")
+    input_file="${input_dir}input_${task_id}.txt"
+
+## Run NHWAVE
+    mpirun -n {{ ntasks_per_node }} ${NH_ex} $input_file
+    
+## Activate Python Environment
+conda activate $conda
+
+## Run the Compression File
+python "{{python_script}}"
+
+
+#!/usr/bin/env bash
+set -e
+
+# ---- hard-coded run configuration ----
+NPROCS=5
+EXEC="/Users/ryanschanta/Work/Models/NHWAVE/NHWAVE_JIM/src/nhwave"
+INPUT="./test_out/inputs/input_00001.txt"
+
+# ---- run ----
+mpirun -n {{ ntasks_per_node }} ${NH_ex} $input_file

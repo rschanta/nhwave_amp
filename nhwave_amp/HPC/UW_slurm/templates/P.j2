@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH --account {{ account }}
+#SBATCH --partition {{ partition }}
+#SBATCH --time={{ walltime }}
+#SBATCH --ntasks-per-node={{ ntasks_per_node }}
+#SBATCH --mem={{ mem }}
+#SBATCH --output={{ output }}
+#SBATCH --error={{ error }}
+#SBATCH --job-name={{ job_name }}
+#SBATCH --array={{ array }}
+
+
+    
+## Access environment variables
+  source {{ env }}
+
+## Activate Python Environment
+conda activate $conda
+
+## Export out environment variables
+export $(xargs <{env})
+
+## Run the Compression File
+python "{{python_script}}"
