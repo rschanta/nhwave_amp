@@ -21,14 +21,16 @@ def get_defaulted_requirements():
     "RGRID": 
         {"default": "1", 
          "desc": "grid size increment for IVGRID = 2"}, 
-        
+    "GRD_R": 
+        {"default": "1.1", 
+         "desc": "grid size increment for IVGRID = 2"}, 
     # TIMING / OUTPUT CONTROL
     "PLOT_START":
-        {"default": 0.0,
+        {"default": '0.0',
          "desc": "time to start writing plot output"},
     
     "SCREEN_INTV":
-        {"default": 5.0,
+        {"default": '5.0',
          "desc": "interval between screen messages"},
     
     "HOTSTART":
@@ -42,7 +44,7 @@ def get_defaulted_requirements():
      "desc": "initial time step"},
 
     "DT_MIN":
-        {"default": "1e-05",
+        {"default": "0.00001",
          "desc": "minimum allowable time step"},
     
     "DT_MAX":
@@ -60,11 +62,11 @@ def get_defaulted_requirements():
          "desc": "CFL number"},
     
     "VISCOUS_NUMBER":
-        {"default": 0.1666666,
+        {"default": '0.1666666',
          "desc": "viscous time-stepping"},
     
     "FROUDE_CAP":
-        {"default": 10.0,
+        {"default": '10.0',
          "desc": "Maximum Fr"},
     
     "MinDep":
@@ -141,7 +143,7 @@ def get_defaulted_requirements():
     
     ## WIND ===================================================================
     "Iws":
-        {"default": "YES",
+        {"default": "1",
          "desc": "1 = constant wind, 2 = spatial wind via wind.txt"},
     
     "WindU":
@@ -189,7 +191,7 @@ def get_defaulted_requirements():
          "desc": "[SERIAL] 1 (CG), 2 (GMRES-IC3), 3 (GMRES-SOR3)"},
     
     "TOL":
-        {"default": "YES",
+        {"default": "0.00000001",
          "desc": "[SERIAL] Solver tolerance "},
     ## [END] SERIAL SOLVER FLAGS ==============================================
     
@@ -228,7 +230,7 @@ def get_defaulted_requirements():
          "desc": "Boundary condition at bottom (1- free slip)"},
     
     "BC_Zn":
-        {"default": "YES",
+        {"default": "1",
          "desc": "Boundary condition at top (1- free slip)"},
     ## [END] BOUNDARY CONDITIONS ==============================================
     
@@ -247,7 +249,7 @@ def get_defaulted_requirements():
 
     ## STATION OUTPUTS 
     "NSTAT":
-        {"default": "0.0",
+        {"default": "0",
          "desc": "Number of stations (if >0, need gage file)"},
     "PLOT_INTV_STAT":
         {"default": "10.0",

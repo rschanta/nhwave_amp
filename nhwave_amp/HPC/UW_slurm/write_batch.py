@@ -21,24 +21,24 @@ def write_batch(template_name = None,
     # Array jobs
     if "array" in params:
         # Output files
-        out_log_dir = os.path.join(log_path,'OUT')
+        out_log_dir = os.path.join(log_path,name,'OUT')
         os.makedirs(out_log_dir,exist_ok=True)
         params['output'] = os.path.join(out_log_dir,'out_%a.out')
         # Error Files
-        err_log_dir = os.path.join(log_path,'ERR')
+        err_log_dir = os.path.join(log_path,name,'ERR')
         os.makedirs(err_log_dir,exist_ok=True)
-        params['error'] = os.path.join(out_log_dir,'err_%a.out')
+        params['error'] = os.path.join(err_log_dir,'err_%a.out')
     # Non-array jobs
     else:
-        params['output'] = os.path.join(log_path,'out.out')
-        params['error'] = os.path.join(log_path,'err.out')
+        params['output'] = os.path.join(log_path,name,'out.out')
+        params['error'] = os.path.join(log_path,name,'err.out')
     # [END] MAKE LOG FOLDER(S)  -----------------------------------------------
     
     
     # Add on other parameters
     if other_params:
         params = {**params, **other_params}
-    params['job-name'] = name
+    params['job_name'] = name
         
     ## CONSTRUCT FILE FROM TEMPLATE -------------------------------------------
     # Path to the nhwave_amp module

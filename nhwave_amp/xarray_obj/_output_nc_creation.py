@@ -242,7 +242,7 @@ def append_zero_top_layer(var_value):
     )
 
 
-def get_into_netcdf_new(INPUT_NETCDF = None, 
+def get_into_netcdf(INPUT_NETCDF = None, 
                     RESULT_FOLDER = None,
                     sigma_transform = False,
                     save_out = True):
@@ -447,7 +447,7 @@ def get_into_netcdf_new(INPUT_NETCDF = None,
         D  = ds["h"] + ds["eta"]                 
         
         # Cell center z values
-        ds["z_c"] = (ds["sig_c"] * D - ds["h"]).transpose("time", "x", "y", "sig_f")
+        ds["z_c"] = (ds["sig_c"] * D - ds["h"]).transpose("time", "x", "y", "sig_c")
         # Cell interfacial z values
         ds["z_f"] = (ds["sig_f"] * D - ds["h"]).transpose("time", "x", "y", "sig_f")
 

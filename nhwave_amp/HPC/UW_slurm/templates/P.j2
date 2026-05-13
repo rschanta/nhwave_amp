@@ -2,23 +2,28 @@
 #SBATCH --account {{ account }}
 #SBATCH --partition {{ partition }}
 #SBATCH --time={{ walltime }}
-#SBATCH --ntasks-per-node={{ ntasks_per_node }}
+#SBATCH --ntasks=1
 #SBATCH --mem={{ mem }}
 #SBATCH --output={{ output }}
 #SBATCH --error={{ error }}
 #SBATCH --job-name={{ job_name }}
+{% if dependency %}
 #SBATCH --array={{ array }}
+{% endif %}
 
 
     
-## Access environment variables
-  source {{ env }}
+## Load relevant modules
+    module load conda
 
-## Activate Python Environment
-conda activate $conda
+## Access environment variables
+    source {{ env }}
+
+## Activate conda environment
+    conda activate "${conda}"
 
 ## Export out environment variables
-export $(xargs <{env})
+export $(xargs <{{env}})
 
 ## Run the Compression File
-python "{{python_script}}"
+python -u "{{python_script}}"

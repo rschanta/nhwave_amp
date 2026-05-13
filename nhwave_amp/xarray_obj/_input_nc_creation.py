@@ -44,7 +44,7 @@ def ensure_net_cdf_type(nc_data):
     for attr_name, attr_value in nc_data.attrs.items():
         # Convert floats
         if isinstance(attr_value, (float, np.floating)):
-            new_attrs[attr_name] = np.float64(attr_value)
+            new_attrs[attr_name] = np.float32(attr_value)
         # Convert integers
         elif isinstance(attr_value, (int, np.integer)):
             new_attrs[attr_name] = np.int32(attr_value)

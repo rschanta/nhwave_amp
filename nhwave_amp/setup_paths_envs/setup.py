@@ -106,7 +106,7 @@ def setup_key_dirs(name='NAME',
     
     # Make Directories
     for key,path_name in paths.items():
-        if key not in {'FW_ex','conda','PYTHONPATH','name'}:
+        if key not in {'NH_ex','conda','PYTHONPATH','name'}:
             if path_name:
                   print(f'\tSpecifying {key}: {path_name}')
                   os.makedirs(path_name, exist_ok=True)

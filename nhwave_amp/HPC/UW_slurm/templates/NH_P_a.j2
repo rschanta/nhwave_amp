@@ -2,33 +2,43 @@
 #SBATCH --account {{ account }}
 #SBATCH --partition {{ partition }}
 #SBATCH --time={{ walltime }}
-#SBATCH --ntasks-per-node={{ ntasks_per_node }}
+#SBATCH --ntasks={{ ntasks_per_node }}
+#SBATCH --cpus-per-task=1
 #SBATCH --mem={{ mem }}
 #SBATCH --output={{ output }}
 #SBATCH --error={{ error }}
 #SBATCH --job-name={{ job_name }}
+{% if array %}
 #SBATCH --array={{ array }}
+{% endif %}
+{% if dependency %}
+#SBATCH --dependency={{ dependency }}
+{% endif %}
 
 ## Load relevant modules
     module load ompi
-    
+    module load conda
+
 ## Access environment variables
-  source {{ env }}
+    source {{ env }}
+
+## Activate conda environment
+    conda activate "${conda}"
 
 # Construct name of input file
     input_dir="$(printenv INPUTS)"
     task_id=$(printf "%05d" "${SLURM_ARRAY_TASK_ID}")
-    input_file="${input_dir}input_${task_id}.txt"
+    input_file="${input_dir}/input_${task_id}.txt"
 
 ## Run NHWAVE
-    mpirun -n {{ ntasks_per_node }} ${NH_ex} $input_file
+   mpirun -n {{ ntasks_per_node }} ${NH_ex} $input_file
     
 ## Activate Python Environment
-conda activate $conda
+conda activate "${conda}"
 
 ## Export out environment variables
-export $(xargs <{env})
+#export $(xargs <${env})
 export TRI_NUM=$SLURM_ARRAY_TASK_ID
 
 ## Run the Compression File
-python "{{python_script}}"
+python -u "{{python_script}}"
