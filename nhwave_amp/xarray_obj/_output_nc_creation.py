@@ -5,15 +5,21 @@ import nhwave_amp as fpy
 from pathlib import Path
 import warnings
 from pathlib import Path
-
+from typing import Dict, List
 
 def find_prefixes_path(directory):
     '''
-    Finds the unique variables output to each RESULT_FOLDER simulation.
+    Finds the unique variables output to each RESULT_FOLDER simulation. This
+    assumes files of the form name_XXXXX for each time step.
     '''
     prefixes = []
     for filename in os.listdir(directory):
-        # Split at extension
+        
+        # Skip hidden files or other artifacts
+        if filename.startswith('.'):
+            continue
+        
+        # Split at filename at extension
         name, _ = os.path.splitext(filename)
         
         # Identify time step files (ends in XXXXX)
@@ -51,8 +57,10 @@ def get_var_out_paths(RESULT_FOLDER: Path, var: str) -> list[Path]:
     out_XXXXX_path = Path(RESULT_FOLDER)
     var_files = []
     for file in out_XXXXX_path.iterdir():
+        if file.name.startswith('.'):
+            continue
         if file.name.startswith(var):
-                var_files.append(file)
+            var_files.append(file)
                 
     path_of_vars = sorted(var_files, key=lambda p: p.name)            
     return path_of_vars
@@ -82,21 +90,35 @@ def load_array(var_XXXXX: Path,
     '''
     Load a NHWAVE output file into a NumPy array. Note that these are all ASCII
     arrays stored in basic text. The dimensionality of variables is important
-    here, since some variables are 2D and some variables are 3D. Read the 
-    relevant lists
+    here, since some variables are 2D and some variables are 3D. These are 
+    explicitly defined in the lists at the beginning of the function.
+    
+    The time_dt.txt file is a special file that is read in separately.
     '''
     
     two_d = ['eta_']
-    three_d = ['p_','u_','v_','w_']
+    three_d = ['p_','u_','v_','w_','k_','c_','d_']
     
     
     try:
-        # READ TIME FILE
+        # READ TIME FILE ------------------------------------------------------
         if var_XXXXX.name == 'time_dt.txt':
+            '''
+            The time file is special, since there's only one of them and its a 
+            simple column file.
+            '''
             return np.loadtxt(var_XXXXX,dtype=np.float32)
+        # [END] READ TIME FILE ------------------------------------------------
         
-        # READ 3D FILE
-        elif any(var_XXXXX.name.startswith(p) for p in three_d):
+        
+        # READ 3D FILE --------------------------------------------------------
+        elif any(var_XXXXX.name.startswith(_) for _ in three_d):
+            '''
+            The conditional here is a generator expression that checks if the
+            var_XXXXX file is a variable defined in the three_d list. These
+            variables will have (Kglob * Nglob) rows and Mglob columns.
+            '''
+            
             # Read the file
             data = np.loadtxt(var_XXXXX)
             
@@ -109,9 +131,16 @@ def load_array(var_XXXXX: Path,
             
             # Reshape otherwise
             return data.reshape(Kglob, Nglob, Mglob)
+        # [END] READ 3D FILE --------------------------------------------------
         
-        # READ 2D FILE
+        
+        # READ 2D FILE --------------------------------------------------------
         elif any(var_XXXXX.name.startswith(p) for p in two_d):
+            '''
+            The conditional here is a generator expression that checks if the
+            var_XXXXX file is a variable defined in the two_d list. These
+            variables will have Nglob rows and Mglob columns.
+            '''
             # Read the file
             data = np.loadtxt(var_XXXXX)
             
@@ -124,20 +153,31 @@ def load_array(var_XXXXX: Path,
                 
             # Reshape otherwise
             return data.reshape(Nglob, Mglob)
-                
-    # Except
+        # [END] READ 2D FILE --------------------------------------------------
+        
+        
+    # EXCEPTION ---------------------------------------------------------------
     except Exception as e:
+        '''
+        This generalically catches any error. If the variable is specified in
+        two_d or three_d, it pads in zeroes.
+        '''
+        
+        # Raise a warning
         warnings.warn(
             f"Issue reading {var_XXXXX.name} ({e}). Substituting with zeros.",
             UserWarning
         )
 
+        # Place all zeroes depending on what it's supposed to be
         if any(var_XXXXX.name.startswith(p) for p in three_d):
             return np.zeros((Kglob, Nglob, Mglob), dtype=np.float32)
-        else:
+        elif any(var_XXXXX.name.startswith(p) for p in two_d):
             return np.zeros((Nglob, Mglob), dtype=np.float32)
-
-
+        else:
+            print('No dimension specified for this variable!')
+    # [END] EXCEPTION ---------------------------------------------------------
+    return
 
     
 def load_and_stack_to_tensors(Mglob, Nglob, Kglob, all_var_dict):
@@ -147,6 +187,8 @@ def load_and_stack_to_tensors(Mglob, Nglob, Kglob, all_var_dict):
     For each variable key in `all_var_dict`, this function loads the associated
     files (using `load_array`), stacks them into a single tensor along a new
     leading axis (time/file index), and returns a dictionary of tensors.
+    
+    We need to know the shape of each variable to do this correctly.
     '''
 
 
@@ -172,19 +214,47 @@ def load_and_stack_to_tensors(Mglob, Nglob, Kglob, all_var_dict):
     return tensor_dict
 
 
+def append_zero_top_layer(var_value):
+    '''
+    Append a zero-valued layer onto the last dimension of a 4D array. This is
+    used for the pressure.
+    
+    Example:
+        Input shape:  (T, Y, X, K)
+        Output shape: (T, Y, X, K+1)
+    '''
+
+    # Create zero-valued top layer
+    zeros_top = np.zeros(
+        (
+            var_value.shape[0],
+            var_value.shape[1],
+            var_value.shape[2],
+            1,
+        ),
+        dtype=var_value.dtype,
+    )
+
+    # Append layer onto final axis
+    return np.concatenate(
+        [var_value, zeros_top],
+        axis=3,
+    )
 
 
-def get_into_netcdf(INPUT_NETCDF = None, 
+def get_into_netcdf_new(INPUT_NETCDF = None, 
                     RESULT_FOLDER = None,
-                    sigma_transform = False):
+                    sigma_transform = False,
+                    save_out = True):
     
     '''
     This takes all of the outputs of a NHWAVE simulation and compresses them
     to a single NetCDF file with variables in up to 4 dimensions, such as:
-        - eta (t_NH,X,Y): Surface profile
-        - u   (t_NH,X,Y,sigma_c): Horizontal velocity
-        
-    As of right now, this does NOT work for station files! 
+        - eta (time,X,Y): Surface profile
+        - u   (time,X,Y,sig_c): Horizontal velocity
+        - p   (time,X,Y,sig_f): Pressure
+    It automatically handles the center/face distinction of velocity and 
+    pressure.
     
     If the `sigma_transform` is set to true, it will automatically calculate 
     the true z levels of the variables in time and include as a variable 
@@ -193,12 +263,12 @@ def get_into_netcdf(INPUT_NETCDF = None,
     
     print('\nStarted compressing raw output files in NetCDF...')
 
-    # Acess the input file
+    # Acess the input file. Read from .env file if not input
     if not INPUT_NETCDF:
         ptr = fpy.get_key_dirs()
         INPUT_NETCDF = ptr['NC_GLOB_OUT']
         
-    # Access the output folder
+    # Access the output folder. Read from .env file if not input
     if not RESULT_FOLDER:
         ptr = fpy.get_key_dirs()
         RESULT_FOLDER = ptr['RAW_OUT']
@@ -216,39 +286,85 @@ def get_into_netcdf(INPUT_NETCDF = None,
     Kglob = int(ds.attrs['Kglob'])
 
    
-    # Get list of all variables found in the result folder
-    var_list = find_prefixes_path(RESULT_FOLDER)
+    # GET LIST OF VARIABLES OUTPUT --------------------------------------------
+    '''
+    Here, we find what variables actually exist in the output folder. Most 
+    variables are stored in the form `name_XXXXX` for each time step, so we
+    find all the unique `name`s in the output folder. (var_list)
     
-    # Dictionary with keys for each variable type (eta,u,sta,etc.) and values a sorted list of all files
-        # for each one (ie- {'eta': ['eta_00000','eta_00001', 'eta_00002' ...]})
+    Then, for each variable, we construct a dictionary for all of its 
+    corresponding files. The key is the variable name and the value is a list
+    of all the files. For example, for eta, we have:
+        {'eta': ['eta_00000','eta_00001', 'eta_00002' ...]}
+    This is the var_paths variable
+    
+    output_variables
+    '''
+    # List of all variables found
+    var_list = find_prefixes_path(RESULT_FOLDER)
+    # Paths to all individual output files
     var_paths = get_vars_out_paths(RESULT_FOLDER, var_list)
-
+    # [END] GET LIST OF VARIABLES OUTPUT --------------------------------------
+    
+    
+    ## LOAD IN ALL OUTPUTS ----------------------------------------------------
+    '''
+    This does the heavy lifting of actually loading in every single file in
+    the output folder. `output_variables` is one giant tensor for each variable
+    across all time, that will be reshaped appropriately later.
+    
+    The time is weird and its a TODO currently to fix whatever is wrong with
+    this that necessitates this patch.
+    '''
     ## Get all outputs
     output_variables = load_and_stack_to_tensors(Mglob,Nglob,Kglob,var_paths)
+    
     
     # Pop off some problematic ones
     for key in ['depth','time']:
         output_variables.pop(key, None)
         
     ## Get time and add
+    print(os.path.join(RESULT_FOLDER,'time'))
     time_array = np.loadtxt(os.path.join(RESULT_FOLDER,'time')).ravel()
-    ds = ds.assign_coords({"t_NH": ("t_NH", time_array)})
-
+    ds = ds.assign_coords({"time": ("time", time_array)})
+    
+    ## [END] LOAD IN ALL OUTPUTS ----------------------------------------------
+    
+    
     
     ## ADD ALL OUTPUT VARIABLES -----------------------------------------------
-    for var_name, var_value in output_variables.items():
-        print(f"\tCompressing: {var_name}")
-        var_value = np.asarray(var_value)
+    '''
+    Now, we start loading things into xarray for the final data compression,
+    reshaping in sensible ways.
+    '''
 
+    for var_name, var_value in output_variables.items():
+        
+        # Ensure we are a numpy tensor
+        var_value = np.asarray(var_value)
+        
+        # Print some useful checks
+        print(f"\tCompressing: {var_name}")
+        print(f"\t\t{var_name}: shape={var_value.shape}")
+        print(f"\t\ttime_array.size={time_array.size}, Nglob={Nglob}, Mglob={Mglob}")
+        if var_name in var_paths:
+            print(f"\t\tn_files for {var_name} = {len(var_paths[var_name])}")
+            
+            
         ## DEAL WITH 2D VARIABLES ---------------------------------------------
         if var_value.ndim == 3:
+            '''
+            Here, we deal with every 2D variable. This is most likely just 
+            eta and potentially depth files.
+            '''
             # Ensure correct size
             if var_value.shape == (time_array.size, Nglob, Mglob):
-                # Transpose so order of variables is (t_NH, X, Y)
+                # Transpose so order of variables is (time, x, y)
                 var_value = np.transpose(var_value, (0, 2, 1))
                 # Assign to the dataset
                 ds = ds.assign({
-                    var_name: (["t_NH", "X", "Y"], var_value)
+                    var_name: (["time", "x", "y"], var_value)
                 })
             else:
                 raise ValueError(f"{var_name}: unexpected 2D-with-time shape {var_value.shape}")
@@ -257,20 +373,58 @@ def get_into_netcdf(INPUT_NETCDF = None,
 
         ## DEAL WITH 3D VARIABLES ---------------------------------------------
         elif var_value.ndim == 4:
-            # Ensure correct size
-            if var_value.shape == (time_array.size, Kglob, Nglob, Mglob):
-                # Transpose so order of variables is (t_NH, X, Y)
-                var_value = np.transpose(var_value, (0, 3, 2, 1))
-                # Assign to the dataset
-                ds = ds.assign({
-                    var_name: (["t_NH", "X", "Y","sigma_c"], var_value)
-                    })
-            else:
-                raise ValueError(f"{var_name}: unexpected 3D-with-time shape {var_value.shape}")
+            '''
+            Here, we deal with 3D variables. Pressure is stored at the cell
+            interfaces whereas everything else is stored at cell interfaces.
+            We need to handle them separately.
+            '''
+            
+            ## CELL-CENTERED VALUES--------------------------------------------
+            if var_name != 'p':
+                '''
+                Variables at cell centers. These use sig_c for their vertical
+                coordinate.
+                '''
+                
+                # Ensure correct size
+                if var_value.shape == (time_array.size, Kglob, Nglob, Mglob):
+                    # Transpose so order of variables is (time, x, y, sig_c)
+                    var_value = np.transpose(var_value, (0, 3, 2, 1))
+                    # Assign to the dataset using sig_f in the vertical
+                    ds = ds.assign({
+                        var_name: (["time", "x", "y","sig_c"], var_value)
+                        })
+                else:
+                    raise ValueError(f"{var_name}: unexpected 3D-with-time shape {var_value.shape}")
+            ## [END] CELL-CENTERED VALUES--------------------------------------
+                 
+            
+            ## PRESSURE -------------------------------------------------------
+            elif var_name == 'p':
+                '''
+                Here, we deal with pressure explicitly, which is stored at the
+                bottom cell faces. We also add in the 0 boundary condition at
+                the top for completeness. Pressure uses sig_f for its vertical
+                coordinate.
+                '''
+                
+                # Ensure correct size
+                if var_value.shape == (time_array.size, Kglob, Nglob, Mglob):
+                    # Transpose so order of variables is (time, x, y)
+                    var_value = np.transpose(var_value, (0, 3, 2, 1))
+                    # Add on boundary condition of 0
+                    var_value = append_zero_top_layer(var_value)
+                    # Assign to dataset using sig_f in the vertical
+                    ds = ds.assign({
+                        var_name: (["time", "x", "y","sig_f"], var_value)
+                        })
+                else:
+                    raise ValueError(f"{var_name}: unexpected pressure shape {var_value.shape}")
+            ## [END] PRESSURE -------------------------------------------------
         ## [END] DEAL WITH 3D VARIABLES ---------------------------------------
         
         
-        ## Warning otherwise
+        ## Warning for weird dimensions
         else:
             warnings.warn(f"Skipping {var_name}: ndim={var_value.ndim}, shape={var_value.shape}", UserWarning)
     ## ADD ALL OUTPUT VARIABLES -----------------------------------------------
@@ -279,24 +433,36 @@ def get_into_netcdf(INPUT_NETCDF = None,
     
     ## INVERSE SIGMA TRANSFORM ------------------------------------------------
     if sigma_transform:
-        print('\tComputing z-coordinates at each time step...')
+        '''
+        If requested, calculate the real z-coordinates all the sigma coordinates
+        at each time step, creating new data variables z_c and z_f for each
+        time step. 
+        
+        Note that this can't really be a coordinate variable since they change
+        at every single time step.
+        '''
+        print('\tInverting sigma-transform to calculate z-values at each step')
+        
         # Total water depth (relies on broadcasting)
         D  = ds["h"] + ds["eta"]                 
-        # Actual z-coordinates
-        Zc = ds["sigma_c"] * D - ds["h"]            # (t_NH, sigc, Y, X)
-        # Add to dataset
-        ds["Zc"] = Zc
-        ds["Zc"] = ds["Zc"].transpose("t_NH","X","Y","sigma_c")
+        
+        # Cell center z values
+        ds["z_c"] = (ds["sig_c"] * D - ds["h"]).transpose("time", "x", "y", "sig_f")
+        # Cell interfacial z values
+        ds["z_f"] = (ds["sig_f"] * D - ds["h"]).transpose("time", "x", "y", "sig_f")
+
+        print('\tFinished inverse coordinate transform!')
     ## [END] INVERSE SIGMA TRANSFORM ------------------------------------------
         
     
     
     # COMPRESS AND SAVE OUT ---------------------------------------------------
-    comp = dict(zlib=True, complevel=4)
-    encoding = {var: comp for var in ds.data_vars}
-    ds.to_netcdf(INPUT_NETCDF, mode='w', encoding=encoding)
-    print(f"Succesfully compressed data to .nc file: {INPUT_NETCDF}")
+    if save_out:
+        comp = dict(zlib=True, complevel=4)
+        encoding = {var: comp for var in ds.data_vars}
+        ds.to_netcdf(INPUT_NETCDF, mode='w', encoding=encoding)
+        print(f"Succesfully compressed data to .nc file: {INPUT_NETCDF}")
     # [END] COMPRESS AND SAVE OUT ---------------------------------------------
     
     
-    return 
+    return ds
