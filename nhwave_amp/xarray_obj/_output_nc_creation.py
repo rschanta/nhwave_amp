@@ -97,7 +97,7 @@ def load_array(var_XXXXX: Path,
     '''
     
     two_d = ['eta_']
-    three_d = ['p_','u_','v_','w_','k_','c_','d_']
+    three_d = ['p_','u_','v_','w_','k_','c_','d_','s_','upwp_']
     
     
     try:
@@ -429,7 +429,14 @@ def get_into_netcdf(INPUT_NETCDF = None,
             warnings.warn(f"Skipping {var_name}: ndim={var_value.ndim}, shape={var_value.shape}", UserWarning)
     ## ADD ALL OUTPUT VARIABLES -----------------------------------------------
         
-    
+    ## ADD MASK ---------------------------------------------------------------
+    '''
+    It seems like NHWAVE still calculates and stores stuff in cells that are 
+    nominally supposed to be dry. This information will be maintained here 
+    too, although a mask where eta goes under the bed is saved for convenience
+    '''
+    ds["mask"] = xr.where(ds["eta"] <= -ds["h"],0,1).astype(np.int8)
+    ## [END] ADD MASK ---------------------------------------------------------
     
     ## INVERSE SIGMA TRANSFORM ------------------------------------------------
     if sigma_transform:
@@ -456,13 +463,28 @@ def get_into_netcdf(INPUT_NETCDF = None,
         
     
     
-    # COMPRESS AND SAVE OUT ---------------------------------------------------
+    ## COMPRESS AND SAVE OUT --------------------------------------------------
     if save_out:
-        comp = dict(zlib=True, complevel=4)
-        encoding = {var: comp for var in ds.data_vars}
-        ds.to_netcdf(INPUT_NETCDF, mode='w', encoding=encoding)
+        '''
+        If save option is enabled, use the .nc path in the .env file to save 
+        out. To save on storage, all floats are converted to single precision.
+        '''
+
+        # Create single-precision encoding
+        encoding = {}
+        for var in ds.data_vars:
+            # Convert floating-point variables to float32
+            if np.issubdtype(ds[var].dtype, np.floating):
+                encoding[var] = {"zlib": True, "complevel": 4, "dtype": "float32"}
+            # Keep non-floating variables in original dtype
+            else:
+                encoding[var] = {"zlib": True, "complevel": 4}
+
+        ds.to_netcdf(INPUT_NETCDF,mode='w',encoding=encoding)
+
         print(f"Succesfully compressed data to .nc file: {INPUT_NETCDF}")
-    # [END] COMPRESS AND SAVE OUT ---------------------------------------------
+
+    ## [END] COMPRESS AND SAVE OUT --------------------------------------------
     
     
     return ds

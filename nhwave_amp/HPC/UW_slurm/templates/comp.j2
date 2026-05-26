@@ -23,35 +23,6 @@
 ## Access environment variables
     source {{ env }}
 
-## Activate conda environment
-    conda activate "${conda}"
-
-# Construct name of input file
-    input_dir="$(printenv INPUTS)"
-    task_id=$(printf "%05d" "${SLURM_ARRAY_TASK_ID}")
-    input_file="${input_dir}/input_${task_id}.txt"
-
-# Change working directory
-    base_dir="/mmfs1/gscratch/derakhti/users/rschanta/outputs/ICCE_07_FLAT_NM/logs/arun"
-    run_dir="${base_dir}/run_${task_id}"
-
-    mkdir -p "$run_dir"
-    cd "$run_dir" || exit 1
-
-    echo "Running task ${SLURM_ARRAY_TASK_ID} in:"
-    pwd
-
-# MPI EXTRA STUFF
-#export OMP_NUM_THREADS=1
-#export MKL_NUM_THREADS=1
-#export OPENBLAS_NUM_THREADS=1
-
-## Run NHWAVE
-   srun -n {{ ntasks }} ${NH_ex} $input_file
-    
-## Activate Python Environment
-conda activate "${conda}"
-
 ## Export out environment variables
 #export $(xargs <${env})
 export TRI_NUM=$SLURM_ARRAY_TASK_ID

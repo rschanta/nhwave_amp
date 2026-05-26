@@ -38,7 +38,7 @@ def write_batch(template_name = None,
     # Add on other parameters
     if other_params:
         params = {**params, **other_params}
-    params['job_name'] = name
+    #params['job_name'] = params['job-name']
         
     ## CONSTRUCT FILE FROM TEMPLATE -------------------------------------------
     # Path to the nhwave_amp module
